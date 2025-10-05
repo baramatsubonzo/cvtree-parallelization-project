@@ -75,10 +75,9 @@ public:
 
 	Bacteria(char* filename)
 	{
-		FILE* bacteria_file;
-		errno_t OK = fopen_s(&bacteria_file, filename, "r");
+		FILE* bacteria_file = fopen(filename, "r");
 
-		if (OK != 0)
+		if (bacteria_file == NULL)
 		{
 			fprintf(stderr, "Error: failed to open file %s\n", filename);
 			exit(1);
@@ -121,24 +120,33 @@ public:
 
 void ReadInputFile(const char* input_name)
 {
-	FILE* input_file;
-	errno_t OK = fopen_s(&input_file, input_name, "r");
+	FILE* input_file = fopen(input_name, "r");
 
-	if (OK != 0)
+	if (input_file == NULL)
 	{
 		fprintf(stderr, "Error: failed to open file %s (Hint: check your working directory)\n", input_name);
 		exit(1);
 	}
 
-    fscanf_s(input_file,"%d",&number_bacteria);
+	if (fscanf(input_file, "%d", &number_bacteria) != 1)
+	{
+		fprintf(stderr, "Error: invalid number of bacteria in file %s\n", input_name);
+		exit(1);
+	}
+
 	bacteria_name = new char*[number_bacteria];
 
 	for(long i=0;i<number_bacteria;i++)
 	{
 		char name[10];
-		fscanf_s(input_file, "%s", name, 10);	
+		if (fscanf(input_file, "%9s", name) != 1)
+		{
+			fprintf(stderr, "Error: invalid bacteria name in file %s\n", input_name);
+			exit(1);
+		}
 		bacteria_name[i] = new char[20];
-		sprintf_s(bacteria_name[i], 20, "data/%s.faa", name);
+		snprintf(bacteria_name[i], 20, "data/%s.faa", name);
+
 	}
 	fclose(input_file);
 }
@@ -199,6 +207,6 @@ int main(int argc,char * argv[])
 	CompareAllBacteria();
 
 	time_t t2 = time(NULL);
-	printf("time elapsed: %lld seconds\n", t2 - t1); 
+	printf("time elapsed: %lld seconds\n",(long long)(t2 - t1)); 
 	return 0;
 }
