@@ -264,10 +264,12 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
-    for(int i=0; i<number_bacteria; i++)
+	#pragma omp parallel for schedule(dynamic)
+	for(int i=0; i<number_bacteria; i++)
 	{
-		printf("load %d of %d\n", i+1, number_bacteria);
 		b[i] = new Bacteria(bacteria_name[i]);
+		#pragma omp critical
+		printf("load %d of %d\n", i+1, number_bacteria);
 	}
 
 	#pragma omp parallel for schedule(dynamic)
