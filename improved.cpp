@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
 
 int number_bacteria;
 char** bacteria_name;
@@ -269,11 +270,13 @@ void CompareAllBacteria()
 		b[i] = new Bacteria(bacteria_name[i]);
 	}
 
+	#pragma omp parallel for schedule(dynamic)
     for(int i=0; i<number_bacteria-1; i++)
 		for(int j=i+1; j<number_bacteria; j++)
 		{
 			printf("%2d %2d -> ", i, j);
 			double correlation = CompareBacteria(b[i], b[j]);
+			#pragma omp critical
 			printf("%.20lf\n", correlation);
 		}
 	for (int i = 0; i < number_bacteria; i++) {
@@ -284,6 +287,7 @@ void CompareAllBacteria()
 
 int main(int argc,char * argv[])
 {
+	printf("threads: %d\n", omp_get_max_threads());
 	time_t t1 = time(NULL);
 
 	Init();
