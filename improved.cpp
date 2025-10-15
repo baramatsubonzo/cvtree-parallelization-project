@@ -107,17 +107,13 @@ public:
 
 		long total_plus_complement = total + complement;
 		double total_div_2 = total * 0.5;
-		int i_mod_aa_number = 0;
-		int i_div_aa_number = 0;
-		long i_mod_M1 = 0;
-		long i_div_M1 = 0;
 
 		double one_l_div_total[AA_NUMBER];
 		for (int i=0; i<AA_NUMBER; i++)
 			one_l_div_total[i] = (double)one_l[i] / total_l;
 
 		double* second_div_total = new double[M1];
-		for (int i=0; i<M1; i++)
+		for (long i=0; i<M1; i++)
 			second_div_total[i] = (double)second[i] / total_plus_complement;
 
 		count = 0;
