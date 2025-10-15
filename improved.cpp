@@ -76,6 +76,7 @@ public:
 	long count;
 	double* tv;
 	long *ti;
+	double l2norm;
 
 	Bacteria(char* filename)
 	{
@@ -164,6 +165,13 @@ public:
 		}
 		delete[] t;
 
+		double sum_sq = 0.0;
+		for (long k = 0; k < this->count; k++)
+		{
+			sum_sq += this->tv[k] * this->tv[k];
+		}
+		this->l2norm = sqrt(sum_sq);
+
 		fclose (bacteria_file);
 	}
 	~Bacteria() {
@@ -205,9 +213,7 @@ void ReadInputFile(const char* input_name)
 
 double CompareBacteria(Bacteria* b1, Bacteria* b2)
 {
-	double correlation = 0;
-	double vector_len1=0;
-	double vector_len2=0;
+	double dot_product = 0.0;
 	long p1 = 0;
 	long p2 = 0;
 	while (p1 < b1->count && p2 < b2->count)
@@ -216,39 +222,24 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 		long n2 = b2->ti[p2];
 		if (n1 < n2)
 		{
-			double t1 = b1->tv[p1];
-			vector_len1 += (t1 * t1);
 			p1++;
 		}
 		else if (n2 < n1)
 		{
-			double t2 = b2->tv[p2];
 			p2++;
-			vector_len2 += (t2 * t2);
 		}
 		else
 		{
-			double t1 = b1->tv[p1++];
-			double t2 = b2->tv[p2++];
-			vector_len1 += (t1 * t1);
-			vector_len2 += (t2 * t2);
-			correlation += t1 * t2;
+			dot_product += b1->tv[p1++] * b2->tv[p2++];
 		}
 	}
-	while (p1 < b1->count)
+
+	if (b1->l2norm < EPSILON || b2->l2norm < EPSILON)
 	{
-		long n1 = b1->ti[p1];
-		double t1 = b1->tv[p1++];
-		vector_len1 += (t1 * t1);
-	}
-	while (p2 < b2->count)
-	{
-		long n2 = b2->ti[p2];
-		double t2 = b2->tv[p2++];
-		vector_len2 += (t2 * t2);
+		return 0.0;
 	}
 
-	return correlation / (sqrt(vector_len1) * sqrt(vector_len2));
+	return dot_product / (b1->l2norm * b2->l2norm);
 }
 
 void CompareAllBacteria()
