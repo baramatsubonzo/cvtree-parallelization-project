@@ -5,6 +5,8 @@
 #include <math.h>
 #include <omp.h>
 #include <vector>
+#include <algorithm> // std::sort を使うために追加
+#include <utility>   // std::pair を使うために追加
 
 int number_bacteria;
 char** bacteria_name;
@@ -193,6 +195,20 @@ public:
 			memcpy(tv + off, tls_val[t].data(), n * sizeof(double));
 			off += n;
 		}
+		// 1. tiとtvをペアにする
+		std::vector<std::pair<long, double>> sorted_pairs(count);
+		for (long i = 0; i < count; i++) {
+			sorted_pairs[i] = {ti[i], tv[i]};
+		}
+
+		// 2. ペアをインデックス(pair.first)基準でソートする
+		std::sort(sorted_pairs.begin(), sorted_pairs.end());
+
+		// 3. ソートされた結果を元の配列に戻す
+		for (long i = 0; i < count; i++) {
+			ti[i] = sorted_pairs[i].first;
+			tv[i] = sorted_pairs[i].second;
+		}
 
 
 		double sum_sq = 0.0;
@@ -274,43 +290,38 @@ void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
 	const int K = 2;
-	static int io_token[K];
-	static int dummy[K];
-
-	int* ready = new int[number_bacteria]();  // ゼロ初期化
+	static int io_token[K] = {0};
 
 	#pragma omp parallel
 	#pragma omp single
 	{
 		for(int i=0; i<number_bacteria; i++)
 		{
-			#pragma omp task firstprivate(i) depend(inout: dummy[i%K]) depend(out: ready[i])
+#pragma omp task firstprivate(i) depend(inout: io_token[i%K])
 			{
 				b[i] = new Bacteria(bacteria_name[i]);
-				#pragma omp critical
+#pragma omp critical
 				printf("load %d of %d\n", i+1, number_bacteria);
-
-				ready[i] = 1;
-			}
-			#pragma omp task firstprivate(i) depend(in: ready[i])
-			{
-				for(int j=0; j<i; j++) {
-				#pragma omp task firstprivate(i,j) depend(in: ready[j], ready[i])
-				{
-				double correlation = CompareBacteria(b[i], b[j]);
-				#pragma omp critical
-				printf("%2d %2d -> %.20lf\n", i, j, correlation);
-				}
-			}
 			}
 		}
-			#pragma omp taskwait
-}
+#pragma omp taskwait
+	}
+	#pragma omp parallel for schedule(dynamic)
+	for(int i=0; i<number_bacteria; i++)
+	{
+		for(int j=i+1; j<number_bacteria; j++)
+			{
+				double correlation = CompareBacteria(b[i], b[j]);
+				#pragma omp critical
+				{
+					printf("%2d %2d -> %.20lf\n", i, j, correlation);
+				}
+			}
+		}
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
 	}
 	delete[] b;
-	delete[] ready;
 }
 
 int main(int argc,char * argv[])
