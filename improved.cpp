@@ -253,7 +253,7 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
-	const int K = 2;
+	const int K = 1;
 	static int io_token[K] = {0};
 
 	int* ready = new int[number_bacteria]();  // ゼロ初期化
