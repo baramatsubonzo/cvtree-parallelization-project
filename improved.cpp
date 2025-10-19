@@ -83,7 +83,7 @@ public:
 
 	Bacteria(char* filename)
 	{
-		FILE* bacteria_file = fopen(filename, "r");
+		FILE* bacteria_file = fopen(filename, "rb");
 
 		if (bacteria_file == NULL)
 		{
@@ -107,7 +107,7 @@ public:
 				char ch = buf[k];
 				if (ch == '>') { st = IN_HEADER; wlen = 0; continue; }
 				if (st == IN_HEADER) { if (ch == '\n') st = IN_SEQ; continue; }
-				if (ch == '\n') continue; // 配列行の改行は捨てる
+				if (ch == '\n' || ch =='\r') continue; // 配列行の改行は捨てる
 
 				if (wlen < (LEN - 1)) {
 					win[wlen++] = ch;
