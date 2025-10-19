@@ -253,7 +253,8 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
-	// #pragma omp parallel for schedule(dynamic)
+	int K = 2;
+	#pragma omp parallel for schedule(static) num_threads(K)
 	for(int i=0; i<number_bacteria; i++)
 	{
 		b[i] = new Bacteria(bacteria_name[i]);
