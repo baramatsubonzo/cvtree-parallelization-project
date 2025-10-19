@@ -253,29 +253,43 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
-	int K = 2;
-	#pragma omp parallel for schedule(static) num_threads(K)
-	for(int i=0; i<number_bacteria; i++)
-	{
-		b[i] = new Bacteria(bacteria_name[i]);
-		// #pragma omp critical
-		printf("load %d of %d\n", i+1, number_bacteria);
-	}
+	const int K = 2;
+	static int io_token[K] = {0};
 
-	#pragma omp parallel for schedule(dynamic)
-    for(int i=0; i<number_bacteria-1; i++)
-		for(int j=i+1; j<number_bacteria; j++)
+	int* ready = new int[number_bacteria]();  // ゼロ初期化
+
+	#pragma omp parallel
+	#pragma omp single
+	{
+		for(int i=0; i<number_bacteria; i++)
 		{
-			double correlation = CompareBacteria(b[i], b[j]);
-			#pragma omp critical
+			#pragma omp task firstprivate(i) depend(inout: io_token[i%K]) depend(out: ready[i])
 			{
+				b[i] = new Bacteria(bacteria_name[i]);
+				#pragma omp critical
+				printf("load %d of %d\n", i+1, number_bacteria);
+
+				ready[i] = 1;
+			}
+			#pragma omp task firstprivate(i) depend(in: ready[i])
+			{
+				for(int j=0; j<i; j++) {
+				#pragma omp task firstprivate(i,j) depend(in: ready[j], ready[i])
+				{
+				double correlation = CompareBacteria(b[i], b[j]);
+				#pragma omp critical
 				printf("%2d %2d -> %.20lf\n", i, j, correlation);
+				}
+			}
 			}
 		}
+			#pragma omp taskwait
+}
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
 	}
 	delete[] b;
+	delete[] ready;
 }
 
 int main(int argc,char * argv[])
