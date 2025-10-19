@@ -107,8 +107,15 @@ public:
 				char ch = buf[k];
 				if (ch == '>') { st = IN_HEADER; wlen = 0; continue; }
 				if (st == IN_HEADER) { if (ch == '\n') st = IN_SEQ; continue; }
-				if (ch == '\n' || ch =='\r') continue; // 配列行の改行は捨てる
-
+				if (ch == '\n' || ch =='\r' || ch == ' ' || ch == '\t') continue; // 配列行の改行は捨てる
+				if (ch >= 'a' && ch <= 'z') ch = ch - 'a' + 'A';
+				int idx = (ch >= 'A' && ch <= 'Z') ? (ch - 'A') : -1;
+				short enc = (idx >= 0 && idx < 27) ? code[idx] : (short)-1;
+				if (enc < 0) {
+					// ここで k-mer は途切れた扱いにする：再プライムが必要
+					wlen = 0;
+					continue;
+				}
 				if (wlen < (LEN - 1)) {
 					win[wlen++] = ch;
 					if (wlen == (LEN - 1)) init_buffer(win);
@@ -131,49 +138,62 @@ public:
 			second_div_total[i] = (double)second[i] / total_plus_complement;
 
 		count = 0;
-		double* t = new double[M];
 
-		#pragma omp parallel for reduction(+:count)
-		for(long i=0; i<M; i++)
+		std::vector<std::vector<long>>   tls_idx(omp_get_max_threads());
+		std::vector<std::vector<double>> tls_val(omp_get_max_threads());
+#pragma omp parallel
 		{
-			long idx_div_aa = i / AA_NUMBER;
-			int aa0 = i % AA_NUMBER;
-			long idx_div_M1 = i / M1;
-			long idx_mod_M1 = i % M1;
+			int tid = omp_get_thread_num();
+			auto &Lidx = tls_idx[tid];
+			auto &Lval = tls_val[tid];
 
-			double p1 = second_div_total[idx_div_aa];
-			double p2 = one_l_div_total[aa0];
-			double p3 = second_div_total[idx_mod_M1];
-			double p4 = one_l_div_total[idx_div_M1];
-			double stochastic =  (p1 * p2 + p3 * p4) * total_div_2;
+			// 事前にある程度リザーブ（任意。空間が許すなら効果大）
+			// Lidx.reserve(1<<20); Lval.reserve(1<<20);
 
-			if (stochastic > EPSILON)
-			{
-				t[i] = (vector[i] - stochastic) / stochastic;
-				count++;
-			}
-			else
-				t[i] = 0.0;
+		#pragma omp for
+				for (long i = 0; i < M; ++i) {
+					long idx_div_aa = i / AA_NUMBER;
+					int  aa0        = i % AA_NUMBER;
+					long idx_div_M1 = i / M1;
+					long idx_mod_M1 = i % M1;
+
+					double p1 = second_div_total[idx_div_aa];
+					double p2 = one_l_div_total[aa0];
+					double p3 = second_div_total[idx_mod_M1];
+					double p4 = one_l_div_total[idx_div_M1];
+					double stochastic = (p1*p2 + p3*p4) * total_div_2;
+
+					if (stochastic > EPSILON) {
+						double val = (vector[i] - stochastic) / stochastic;
+						if (val != 0.0) {    // ほぼ常に真だが、ゼロ除外はそのまま
+							Lidx.push_back(i);
+							Lval.push_back(val);
+						}
+					}
+				}
+
 		}
 
 		delete[] second_div_total;
 		delete[] vector;
 		delete[] second;
 
+		size_t nnz = 0;
+		for (auto &v : tls_idx) nnz += v.size();
+		count = (long)nnz;
+
 		tv = new double[count];
 		ti = new long[count];
 
-		int pos = 0;
-		for (long i=0; i<M; i++)
-		{
-			if (t[i] != 0)
-			{
-				tv[pos] = t[i];
-				ti[pos] = i;
-				pos++;
-			}
+		size_t off = 0;
+		for (size_t t = 0; t < tls_idx.size(); ++t) {
+			auto n = tls_idx[t].size();
+			if (n == 0) continue;
+			memcpy(ti + off, tls_idx[t].data(), n * sizeof(long));
+			memcpy(tv + off, tls_val[t].data(), n * sizeof(double));
+			off += n;
 		}
-		delete[] t;
+
 
 		double sum_sq = 0.0;
 		for (long k = 0; k < this->count; k++)
@@ -253,8 +273,9 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
-	const int K = 1;
-	static int io_token[K] = {0};
+	const int K = 2;
+	static int io_token[K];
+	static int dummy[K];
 
 	int* ready = new int[number_bacteria]();  // ゼロ初期化
 
@@ -263,7 +284,7 @@ void CompareAllBacteria()
 	{
 		for(int i=0; i<number_bacteria; i++)
 		{
-			#pragma omp task firstprivate(i) depend(inout: io_token[i%K]) depend(out: ready[i])
+			#pragma omp task firstprivate(i) depend(inout: dummy[i%K]) depend(out: ready[i])
 			{
 				b[i] = new Bacteria(bacteria_name[i]);
 				#pragma omp critical
