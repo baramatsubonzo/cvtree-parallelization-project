@@ -4,6 +4,7 @@
 #include <time.h>
 #include <math.h>
 #include <omp.h>
+#include <vector>
 
 int number_bacteria;
 char** bacteria_name;
@@ -78,6 +79,8 @@ public:
 	long *ti;
 	double l2norm;
 
+	static const size_t IO_CHUNK = 1u << 20;
+
 	Bacteria(char* filename)
 	{
 		FILE* bacteria_file = fopen(filename, "r");
@@ -88,22 +91,33 @@ public:
 			exit(1);
 		}
 
+		setvbuf(bacteria_file, NULL, _IOFBF, IO_CHUNK);
+
 		InitVectors();
 
-		char ch;
-		while ((ch = fgetc(bacteria_file)) != EOF)
-		{
-			if (ch == '>')
-			{
-				while (fgetc(bacteria_file) != '\n'); // skip rest of line
+		std::vector<char> buf(IO_CHUNK);
+		enum State { IN_HEADER, IN_SEQ } st = IN_SEQ;
+		char win[LEN-1]; int wlen = 0;
 
-				char buffer[LEN-1];
-				fread(buffer, sizeof(char), LEN-1, bacteria_file);
-				init_buffer(buffer);
+
+
+		size_t n;
+		while ((n = fread(buf.data(), 1, buf.size(), bacteria_file)) > 0) {
+			for (size_t k = 0; k < n; ++k) {
+				char ch = buf[k];
+				if (ch == '>') { st = IN_HEADER; wlen = 0; continue; }
+				if (st == IN_HEADER) { if (ch == '\n') st = IN_SEQ; continue; }
+				if (ch == '\n') continue; // 配列行の改行は捨てる
+
+				if (wlen < (LEN - 1)) {
+					win[wlen++] = ch;
+					if (wlen == (LEN - 1)) init_buffer(win);
+				} else {
+					cont_buffer(ch);
+				}
 			}
-			else if (ch != '\n')
-				cont_buffer(ch);
 		}
+		fclose(bacteria_file);
 
 		long total_plus_complement = total + complement;
 		double total_div_2 = total * 0.5;
@@ -167,8 +181,6 @@ public:
 			sum_sq += this->tv[k] * this->tv[k];
 		}
 		this->l2norm = sqrt(sum_sq);
-
-		fclose (bacteria_file);
 	}
 	~Bacteria() {
 		delete[] tv;
