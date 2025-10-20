@@ -17,7 +17,7 @@ void Init()
 {
 	M2 = 1;
 	for (int i=0; i<LEN-2; i++)	// M2 = AA_NUMBER ^ (LEN-2);
-		M2 *= AA_NUMBER; 
+		M2 *= AA_NUMBER;
 	M1 = M2 * AA_NUMBER;		// M1 = AA_NUMBER ^ (LEN-1);
 	M  = M1 *AA_NUMBER;			// M  = AA_NUMBER ^ (LEN);
 }
