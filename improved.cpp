@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
 
 int number_bacteria;
 char** bacteria_name;
@@ -75,6 +76,7 @@ public:
 	long count;
 	double* tv;
 	long *ti;
+	double l2norm;
 
 	Bacteria(char* filename)
 	{
@@ -105,45 +107,31 @@ public:
 
 		long total_plus_complement = total + complement;
 		double total_div_2 = total * 0.5;
-		int i_mod_aa_number = 0;
-		int i_div_aa_number = 0;
-		long i_mod_M1 = 0;
-		long i_div_M1 = 0;
 
 		double one_l_div_total[AA_NUMBER];
 		for (int i=0; i<AA_NUMBER; i++)
 			one_l_div_total[i] = (double)one_l[i] / total_l;
 
 		double* second_div_total = new double[M1];
-		for (int i=0; i<M1; i++)
+		for (long i=0; i<M1; i++)
 			second_div_total[i] = (double)second[i] / total_plus_complement;
 
 		count = 0;
 		double* t = new double[M];
 
+		#pragma omp parallel for reduction(+:count)
 		for(long i=0; i<M; i++)
 		{
-			double p1 = second_div_total[i_div_aa_number];
-			double p2 = one_l_div_total[i_mod_aa_number];
-			double p3 = second_div_total[i_mod_M1];
-			double p4 = one_l_div_total[i_div_M1];
+			long idx_div_aa = i / AA_NUMBER;
+			int aa0 = i % AA_NUMBER;
+			long idx_div_M1 = i / M1;
+			long idx_mod_M1 = i % M1;
+
+			double p1 = second_div_total[idx_div_aa];
+			double p2 = one_l_div_total[aa0];
+			double p3 = second_div_total[idx_mod_M1];
+			double p4 = one_l_div_total[idx_div_M1];
 			double stochastic =  (p1 * p2 + p3 * p4) * total_div_2;
-
-			if (i_mod_aa_number == AA_NUMBER-1)
-			{
-				i_mod_aa_number = 0;
-				i_div_aa_number++;
-			}
-			else
-				i_mod_aa_number++;
-
-			if (i_mod_M1 == M1-1)
-			{
-				i_mod_M1 = 0;
-				i_div_M1++;
-			}
-			else
-				i_mod_M1++;
 
 			if (stochastic > EPSILON)
 			{
@@ -151,7 +139,7 @@ public:
 				count++;
 			}
 			else
-				t[i] = 0;
+				t[i] = 0.0;
 		}
 
 		delete[] second_div_total;
@@ -172,6 +160,13 @@ public:
 			}
 		}
 		delete[] t;
+
+		double sum_sq = 0.0;
+		for (long k = 0; k < this->count; k++)
+		{
+			sum_sq += this->tv[k] * this->tv[k];
+		}
+		this->l2norm = sqrt(sum_sq);
 
 		fclose (bacteria_file);
 	}
@@ -214,9 +209,7 @@ void ReadInputFile(const char* input_name)
 
 double CompareBacteria(Bacteria* b1, Bacteria* b2)
 {
-	double correlation = 0;
-	double vector_len1=0;
-	double vector_len2=0;
+	double dot_product = 0.0;
 	long p1 = 0;
 	long p2 = 0;
 	while (p1 < b1->count && p2 < b2->count)
@@ -225,56 +218,46 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 		long n2 = b2->ti[p2];
 		if (n1 < n2)
 		{
-			double t1 = b1->tv[p1];
-			vector_len1 += (t1 * t1);
 			p1++;
 		}
 		else if (n2 < n1)
 		{
-			double t2 = b2->tv[p2];
 			p2++;
-			vector_len2 += (t2 * t2);
 		}
 		else
 		{
-			double t1 = b1->tv[p1++];
-			double t2 = b2->tv[p2++];
-			vector_len1 += (t1 * t1);
-			vector_len2 += (t2 * t2);
-			correlation += t1 * t2;
+			dot_product += b1->tv[p1++] * b2->tv[p2++];
 		}
 	}
-	while (p1 < b1->count)
+
+	if (b1->l2norm < EPSILON || b2->l2norm < EPSILON)
 	{
-		long n1 = b1->ti[p1];
-		double t1 = b1->tv[p1++];
-		vector_len1 += (t1 * t1);
-	}
-	while (p2 < b2->count)
-	{
-		long n2 = b2->ti[p2];
-		double t2 = b2->tv[p2++];
-		vector_len2 += (t2 * t2);
+		return 0.0;
 	}
 
-	return correlation / (sqrt(vector_len1) * sqrt(vector_len2));
+	return dot_product / (b1->l2norm * b2->l2norm);
 }
 
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
-    for(int i=0; i<number_bacteria; i++)
+	// #pragma omp parallel for schedule(dynamic)
+	for(int i=0; i<number_bacteria; i++)
 	{
-		printf("load %d of %d\n", i+1, number_bacteria);
 		b[i] = new Bacteria(bacteria_name[i]);
+		// #pragma omp critical
+		printf("load %d of %d\n", i+1, number_bacteria);
 	}
 
+	#pragma omp parallel for schedule(dynamic)
     for(int i=0; i<number_bacteria-1; i++)
 		for(int j=i+1; j<number_bacteria; j++)
 		{
-			printf("%2d %2d -> ", i, j);
 			double correlation = CompareBacteria(b[i], b[j]);
-			printf("%.20lf\n", correlation);
+			#pragma omp critical
+			{
+				printf("%2d %2d -> %.20lf\n", i, j, correlation);
+			}
 		}
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
@@ -284,6 +267,7 @@ void CompareAllBacteria()
 
 int main(int argc,char * argv[])
 {
+	printf("threads: %d\n", omp_get_max_threads());
 	time_t t1 = time(NULL);
 
 	Init();
