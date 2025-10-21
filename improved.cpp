@@ -268,14 +268,33 @@ void CompareAllBacteria()
 		printf("load %d of %d\n", i+1, number_bacteria);
 		b[i] = new Bacteria(bacteria_name[i]);
 	}
+	printf("Calculating correlations (with Tiling)\n");
 
-    for(int i=0; i<number_bacteria-1; i++)
-		for(int j=i+1; j<number_bacteria; j++)
+	const int B = 8; // Tile size, 4, 8, 16, 32, 64, 128で再度試してみる;
+
+	for (int ib=0; ib<number_bacteria; ib+=B)
+	{
+		for (int jb = ib; jb < number_bacteria; jb+=B)
 		{
-			printf("%2d %2d -> ", i, j);
-			double correlation = CompareBacteria(b[i], b[j]);
-			printf("%.20lf\n", correlation);
+			for (int i = ib; i < ib + B && i < number_bacteria -1; i++)
+			{
+				int j_start;
+
+				if (ib == jb)
+					j_start = i + 1;
+				else
+					j_start = jb;
+
+				for (int j = j_start; j < jb + B && j < number_bacteria; j++)
+				{
+					printf("%2d %2d -> ", i, j);
+					double correlation = CompareBacteria(b[i], b[j]);
+					printf("%.20lf\n", correlation);
+				}
+			}
 		}
+	}
+
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
 	}
