@@ -3,6 +3,10 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
+#include <vector>
+#include <algorithm> // std::sort を使うために追加
+#include <utility>   // std::pair を使うために追加
 
 int number_bacteria;
 char** bacteria_name;
@@ -75,10 +79,13 @@ public:
 	long count;
 	double* tv;
 	long *ti;
+	double l2norm;
+
+	static const size_t IO_CHUNK = 1u << 20;
 
 	Bacteria(char* filename)
 	{
-		FILE* bacteria_file = fopen(filename, "r");
+		FILE* bacteria_file = fopen(filename, "rb");
 
 		if (bacteria_file == NULL)
 		{
@@ -86,94 +93,130 @@ public:
 			exit(1);
 		}
 
+		setvbuf(bacteria_file, NULL, _IOFBF, IO_CHUNK);
+
 		InitVectors();
 
-		char ch;
-		while ((ch = fgetc(bacteria_file)) != EOF)
-		{
-			if (ch == '>')
-			{
-				while (fgetc(bacteria_file) != '\n'); // skip rest of line
+		std::vector<char> buf(IO_CHUNK);
+		enum State { IN_HEADER, IN_SEQ } st = IN_SEQ;
+		char win[LEN-1]; int wlen = 0;
 
-				char buffer[LEN-1];
-				fread(buffer, sizeof(char), LEN-1, bacteria_file);
-				init_buffer(buffer);
+
+
+		size_t n;
+		while ((n = fread(buf.data(), 1, buf.size(), bacteria_file)) > 0) {
+			for (size_t k = 0; k < n; ++k) {
+				char ch = buf[k];
+				if (ch == '>') { st = IN_HEADER; wlen = 0; continue; }
+				if (st == IN_HEADER) { if (ch == '\n') st = IN_SEQ; continue; }
+				if (ch == '\n' || ch =='\r' || ch == ' ' || ch == '\t') continue; // 配列行の改行は捨てる
+				if (ch >= 'a' && ch <= 'z') ch = ch - 'a' + 'A';
+				int idx = (ch >= 'A' && ch <= 'Z') ? (ch - 'A') : -1;
+				short enc = (idx >= 0 && idx < 27) ? code[idx] : (short)-1;
+				if (enc < 0) {
+					// ここで k-mer は途切れた扱いにする：再プライムが必要
+					wlen = 0;
+					continue;
+				}
+				if (wlen < (LEN - 1)) {
+					win[wlen++] = ch;
+					if (wlen == (LEN - 1)) init_buffer(win);
+				} else {
+					cont_buffer(ch);
+				}
 			}
-			else if (ch != '\n')
-				cont_buffer(ch);
 		}
+		fclose(bacteria_file);
 
 		long total_plus_complement = total + complement;
 		double total_div_2 = total * 0.5;
-		int i_mod_aa_number = 0;
-		int i_div_aa_number = 0;
-		long i_mod_M1 = 0;
-		long i_div_M1 = 0;
 
 		double one_l_div_total[AA_NUMBER];
 		for (int i=0; i<AA_NUMBER; i++)
 			one_l_div_total[i] = (double)one_l[i] / total_l;
 
 		double* second_div_total = new double[M1];
-		for (int i=0; i<M1; i++)
+		for (long i=0; i<M1; i++)
 			second_div_total[i] = (double)second[i] / total_plus_complement;
 
 		count = 0;
-		double* t = new double[M];
 
-		for(long i=0; i<M; i++)
+		std::vector<std::vector<long>>   tls_idx(omp_get_max_threads());
+		std::vector<std::vector<double>> tls_val(omp_get_max_threads());
+#pragma omp parallel
 		{
-			double p1 = second_div_total[i_div_aa_number];
-			double p2 = one_l_div_total[i_mod_aa_number];
-			double p3 = second_div_total[i_mod_M1];
-			double p4 = one_l_div_total[i_div_M1];
-			double stochastic =  (p1 * p2 + p3 * p4) * total_div_2;
+			int tid = omp_get_thread_num();
+			auto &Lidx = tls_idx[tid];
+			auto &Lval = tls_val[tid];
 
-			if (i_mod_aa_number == AA_NUMBER-1)
-			{
-				i_mod_aa_number = 0;
-				i_div_aa_number++;
-			}
-			else
-				i_mod_aa_number++;
+			// 事前にある程度リザーブ（任意。空間が許すなら効果大）
+			// Lidx.reserve(1<<20); Lval.reserve(1<<20);
 
-			if (i_mod_M1 == M1-1)
-			{
-				i_mod_M1 = 0;
-				i_div_M1++;
-			}
-			else
-				i_mod_M1++;
+		#pragma omp for
+				for (long i = 0; i < M; ++i) {
+					long idx_div_aa = i / AA_NUMBER;
+					int  aa0        = i % AA_NUMBER;
+					long idx_div_M1 = i / M1;
+					long idx_mod_M1 = i % M1;
 
-			if (stochastic > EPSILON)
-			{
-				t[i] = (vector[i] - stochastic) / stochastic;
-				count++;
-			}
-			else
-				t[i] = 0;
+					double p1 = second_div_total[idx_div_aa];
+					double p2 = one_l_div_total[aa0];
+					double p3 = second_div_total[idx_mod_M1];
+					double p4 = one_l_div_total[idx_div_M1];
+					double stochastic = (p1*p2 + p3*p4) * total_div_2;
+
+					if (stochastic > EPSILON) {
+						double val = (vector[i] - stochastic) / stochastic;
+						if (val != 0.0) {    // ほぼ常に真だが、ゼロ除外はそのまま
+							Lidx.push_back(i);
+							Lval.push_back(val);
+						}
+					}
+				}
+
 		}
 
 		delete[] second_div_total;
 		delete[] vector;
 		delete[] second;
 
+		size_t nnz = 0;
+		for (auto &v : tls_idx) nnz += v.size();
+		count = (long)nnz;
+
 		tv = new double[count];
 		ti = new long[count];
 
-		int pos = 0;
-		for (long i=0; i<M; i++)
-		{
-			if (t[i] != 0)
-			{
-				tv[pos] = t[i];
-				ti[pos] = i;
-				pos++;
-			}
+		size_t off = 0;
+		for (size_t t = 0; t < tls_idx.size(); ++t) {
+			auto n = tls_idx[t].size();
+			if (n == 0) continue;
+			memcpy(ti + off, tls_idx[t].data(), n * sizeof(long));
+			memcpy(tv + off, tls_val[t].data(), n * sizeof(double));
+			off += n;
 		}
-		delete[] t;
+		// 1. tiとtvをペアにする
+		std::vector<std::pair<long, double>> sorted_pairs(count);
+		for (long i = 0; i < count; i++) {
+			sorted_pairs[i] = {ti[i], tv[i]};
+		}
 
-		fclose (bacteria_file);
+		// 2. ペアをインデックス(pair.first)基準でソートする
+		std::sort(sorted_pairs.begin(), sorted_pairs.end());
+
+		// 3. ソートされた結果を元の配列に戻す
+		for (long i = 0; i < count; i++) {
+			ti[i] = sorted_pairs[i].first;
+			tv[i] = sorted_pairs[i].second;
+		}
+
+
+		double sum_sq = 0.0;
+		for (long k = 0; k < this->count; k++)
+		{
+			sum_sq += this->tv[k] * this->tv[k];
+		}
+		this->l2norm = sqrt(sum_sq);
 	}
 	~Bacteria() {
 		delete[] tv;
@@ -214,9 +257,7 @@ void ReadInputFile(const char* input_name)
 
 double CompareBacteria(Bacteria* b1, Bacteria* b2)
 {
-	double correlation = 0;
-	double vector_len1=0;
-	double vector_len2=0;
+	double dot_product = 0.0;
 	long p1 = 0;
 	long p2 = 0;
 	while (p1 < b1->count && p2 < b2->count)
@@ -225,56 +266,57 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 		long n2 = b2->ti[p2];
 		if (n1 < n2)
 		{
-			double t1 = b1->tv[p1];
-			vector_len1 += (t1 * t1);
 			p1++;
 		}
 		else if (n2 < n1)
 		{
-			double t2 = b2->tv[p2];
 			p2++;
-			vector_len2 += (t2 * t2);
 		}
 		else
 		{
-			double t1 = b1->tv[p1++];
-			double t2 = b2->tv[p2++];
-			vector_len1 += (t1 * t1);
-			vector_len2 += (t2 * t2);
-			correlation += t1 * t2;
+			dot_product += b1->tv[p1++] * b2->tv[p2++];
 		}
 	}
-	while (p1 < b1->count)
+
+	if (b1->l2norm < EPSILON || b2->l2norm < EPSILON)
 	{
-		long n1 = b1->ti[p1];
-		double t1 = b1->tv[p1++];
-		vector_len1 += (t1 * t1);
-	}
-	while (p2 < b2->count)
-	{
-		long n2 = b2->ti[p2];
-		double t2 = b2->tv[p2++];
-		vector_len2 += (t2 * t2);
+		return 0.0;
 	}
 
-	return correlation / (sqrt(vector_len1) * sqrt(vector_len2));
+	return dot_product / (b1->l2norm * b2->l2norm);
 }
 
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
-    for(int i=0; i<number_bacteria; i++)
-	{
-		printf("load %d of %d\n", i+1, number_bacteria);
-		b[i] = new Bacteria(bacteria_name[i]);
-	}
+	const int K = 2;
+	static int io_token[K] = {0};
 
-    for(int i=0; i<number_bacteria-1; i++)
-		for(int j=i+1; j<number_bacteria; j++)
+	#pragma omp parallel
+	#pragma omp single
+	{
+		for(int i=0; i<number_bacteria; i++)
 		{
-			printf("%2d %2d -> ", i, j);
-			double correlation = CompareBacteria(b[i], b[j]);
-			printf("%.20lf\n", correlation);
+#pragma omp task firstprivate(i) depend(inout: io_token[i%K])
+			{
+				b[i] = new Bacteria(bacteria_name[i]);
+#pragma omp critical
+				printf("load %d of %d\n", i+1, number_bacteria);
+			}
+		}
+#pragma omp taskwait
+	}
+	#pragma omp parallel for schedule(dynamic)
+	for(int i=0; i<number_bacteria; i++)
+	{
+		for(int j=i+1; j<number_bacteria; j++)
+			{
+				double correlation = CompareBacteria(b[i], b[j]);
+				#pragma omp critical
+				{
+					printf("%2d %2d -> %.20lf\n", i, j, correlation);
+				}
+			}
 		}
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
@@ -284,6 +326,7 @@ void CompareAllBacteria()
 
 int main(int argc,char * argv[])
 {
+	printf("threads: %d\n", omp_get_max_threads());
 	time_t t1 = time(NULL);
 
 	Init();
