@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
 
 int number_bacteria;
 char** bacteria_name;
@@ -282,16 +283,19 @@ void CompareAllBacteria()
 	CorrelationResult* results = new CorrelationResult[num_pairs];
 	long result_index = 0; // Index for results array
 	printf("Calculating correlations\n");
+	#pragma omp parallel for collapse(2)
     for(int i=0; i<number_bacteria-1; i++)
 		for(int j=i+1; j<number_bacteria; j++)
 		{
 			double correlation = CompareBacteria(b[i], b[j]);
-
+			// Store the result in a thread-safe manner
+			long k;
+			#pragma omp atomic capture
+			k = result_index++;
 			// Store the result in the array
-			results[result_index].i = i;
-			results[result_index].j = j;
-			results[result_index].value = correlation;
-			result_index++;
+			results[k].i = i;
+			results[k].j = j;
+			results[k].value = correlation;
 		}
 	printf("Calculation finished\n");
 	printf("All Correlations\n");
