@@ -272,6 +272,7 @@ struct CorrelationResult
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
+	#pragma omp parallel for
     for(int i=0; i<number_bacteria; i++)
 	{
 		printf("load %d of %d\n", i+1, number_bacteria);
