@@ -122,7 +122,7 @@ public:
 		count = 0;
 		double* t = new double[M];
 
-		#pragma omp parallel for reduction(+:count)
+		#pragma omp simd reduction(+:count)
 		for(long i=0; i<M; i++)
 		{
 			int i_mod_aa_number = i % AA_NUMBER;
