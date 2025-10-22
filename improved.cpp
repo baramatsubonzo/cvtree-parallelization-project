@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
 
 int number_bacteria;
 char** bacteria_name;
@@ -219,6 +220,7 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 	double vector_len2=0;
 	long p1 = 0;
 	long p2 = 0;
+
 	while (p1 < b1->count && p2 < b2->count)
 	{
 		long n1 = b1->ti[p1];
@@ -260,22 +262,51 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 	return correlation / (sqrt(vector_len1) * sqrt(vector_len2));
 }
 
+struct CorrelationResult
+{
+	int i;
+	int j;
+	double value;
+};
+
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
+	#pragma omp parallel for schedule(dynamic)
     for(int i=0; i<number_bacteria; i++)
 	{
 		printf("load %d of %d\n", i+1, number_bacteria);
 		b[i] = new Bacteria(bacteria_name[i]);
 	}
 
+	long num_pairs = (long)number_bacteria * (number_bacteria - 1) / 2;
+
+	CorrelationResult* results = new CorrelationResult[num_pairs];
+	long result_index = 0; // Index for results array
+	printf("Calculating correlations\n");
+	#pragma omp parallel for collapse(2) schedule(dynamic)
     for(int i=0; i<number_bacteria-1; i++)
 		for(int j=i+1; j<number_bacteria; j++)
 		{
-			printf("%2d %2d -> ", i, j);
 			double correlation = CompareBacteria(b[i], b[j]);
-			printf("%.20lf\n", correlation);
+			// Store the result in a thread-safe manner
+			long k;
+			#pragma omp atomic capture
+			k = result_index++;
+			// Store the result in the array
+			results[k].i = i;
+			results[k].j = j;
+			results[k].value = correlation;
 		}
+	printf("Calculation finished\n");
+	printf("All Correlations\n");
+	for (long k=0; k<num_pairs; k++)
+	{
+		printf("%2d %2d -> %.20lf\n", results[k].i, results[k].j, results[k].value);
+	}
+
+	delete[] results;
+
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
 	}
