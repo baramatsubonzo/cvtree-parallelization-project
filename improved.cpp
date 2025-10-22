@@ -76,6 +76,7 @@ public:
 	long count;
 	double* tv;
 	long *ti;
+	double vector_len;
 
 	Bacteria(char* filename)
 	{
@@ -164,6 +165,13 @@ public:
 		}
 		delete[] t;
 
+		vector_len = 0;
+        for (int i = 0; i < count; i++)
+        {
+            vector_len += tv[i] * tv[i];
+        }
+        vector_len = sqrt(vector_len);
+
 		fclose (bacteria_file);
 	}
 	~Bacteria() {
@@ -206,50 +214,28 @@ void ReadInputFile(const char* input_name)
 double CompareBacteria(Bacteria* b1, Bacteria* b2)
 {
 	double correlation = 0;
-	double vector_len1=0;
-	double vector_len2=0;
-	long p1 = 0;
-	long p2 = 0;
+    long p1 = 0;
+    long p2 = 0;
 
-	while (p1 < b1->count && p2 < b2->count)
-	{
-		long n1 = b1->ti[p1];
-		long n2 = b2->ti[p2];
-		if (n1 < n2)
-		{
-			double t1 = b1->tv[p1];
-			vector_len1 += (t1 * t1);
-			p1++;
-		}
-		else if (n2 < n1)
-		{
-			double t2 = b2->tv[p2];
-			p2++;
-			vector_len2 += (t2 * t2);
-		}
-		else
-		{
-			double t1 = b1->tv[p1++];
-			double t2 = b2->tv[p2++];
-			vector_len1 += (t1 * t1);
-			vector_len2 += (t2 * t2);
-			correlation += t1 * t2;
-		}
-	}
-	while (p1 < b1->count)
-	{
-		long n1 = b1->ti[p1];
-		double t1 = b1->tv[p1++];
-		vector_len1 += (t1 * t1);
-	}
-	while (p2 < b2->count)
-	{
-		long n2 = b2->ti[p2];
-		double t2 = b2->tv[p2++];
-		vector_len2 += (t2 * t2);
-	}
+    while (p1 < b1->count && p2 < b2->count)
+    {
+        long n1 = b1->ti[p1];
+        long n2 = b2->ti[p2];
+        if (n1 < n2)
+        {
+            p1++;
+        }
+        else if (n2 < n1)
+        {
+            p2++;
+        }
+        else
+        {
+            correlation += b1->tv[p1++] * b2->tv[p2++];
+        }
+    }
+	    return correlation / (b1->vector_len * b2->vector_len);
 
-	return correlation / (sqrt(vector_len1) * sqrt(vector_len2));
 }
 
 struct CorrelationResult
