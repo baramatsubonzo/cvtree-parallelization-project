@@ -122,29 +122,19 @@ public:
 		count = 0;
 		double* t = new double[M];
 
+		#pragma omp parallel for reduction(+:count)
 		for(long i=0; i<M; i++)
 		{
+			int i_mod_aa_number = i % AA_NUMBER;
+			int i_div_aa_number = i / AA_NUMBER;
+			int i_mod_M1 = i % M1;
+			int i_div_M1 = i / M1;
+
 			double p1 = second_div_total[i_div_aa_number];
 			double p2 = one_l_div_total[i_mod_aa_number];
 			double p3 = second_div_total[i_mod_M1];
 			double p4 = one_l_div_total[i_div_M1];
 			double stochastic =  (p1 * p2 + p3 * p4) * total_div_2;
-
-			if (i_mod_aa_number == AA_NUMBER-1)
-			{
-				i_mod_aa_number = 0;
-				i_div_aa_number++;
-			}
-			else
-				i_mod_aa_number++;
-
-			if (i_mod_M1 == M1-1)
-			{
-				i_mod_M1 = 0;
-				i_div_M1++;
-			}
-			else
-				i_mod_M1++;
 
 			if (stochastic > EPSILON)
 			{
