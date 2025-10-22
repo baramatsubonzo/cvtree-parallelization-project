@@ -116,6 +116,7 @@ public:
 			one_l_div_total[i] = (double)one_l[i] / total_l;
 
 		double* second_div_total = new double[M1];
+		#pragma omp parallel for
 		for (int i=0; i<M1; i++)
 			second_div_total[i] = (double)second[i] / total_plus_complement;
 
