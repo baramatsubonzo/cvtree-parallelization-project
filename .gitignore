@@ -1,3 +1,6 @@
 .DS_Store
 .VSCode/
+# CLion/JetBrains project settings
 .idea/
+# CLion/CMake build directories
+cmake-build-*/
