@@ -274,12 +274,15 @@ void CompareAllBacteria()
 	double phase1_end_time = omp_get_wtime();
 	printf("Phase 1 finished in %.4f seconds.\n", phase1_end_time - phase1_start_time);
 
+	#pragma omp parallel for
     for(int i=0; i<number_bacteria-1; i++)
 		for(int j=i+1; j<number_bacteria; j++)
 		{
-			printf("%2d %2d -> ", i, j);
 			double correlation = CompareBacteria(b[i], b[j]);
-			printf("%.20lf\n", correlation);
+			#pragma omp critical
+			{
+				printf("%2d %2d -> %.20lf\n", i, j, correlation);
+			}
 		}
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
