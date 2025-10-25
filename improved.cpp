@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
 
 int number_bacteria;
 char** bacteria_name;
@@ -263,11 +264,15 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
+	printf("Phase 1: Loading %d bacteria files...\n", number_bacteria);
+	double phase1_start_time = omp_get_wtime();
+	#pragma omp parallel for
     for(int i=0; i<number_bacteria; i++)
 	{
-		printf("load %d of %d\n", i+1, number_bacteria);
 		b[i] = new Bacteria(bacteria_name[i]);
 	}
+	double phase1_end_time = omp_get_wtime();
+	printf("Phase 1 finished in %.4f seconds.\n", phase1_end_time - phase1_start_time);
 
     for(int i=0; i<number_bacteria-1; i++)
 		for(int j=i+1; j<number_bacteria; j++)
@@ -284,6 +289,7 @@ void CompareAllBacteria()
 
 int main(int argc,char * argv[])
 {
+	printf("threads: %d\n", omp_get_max_threads());
 	time_t t1 = time(NULL);
 
 	Init();
