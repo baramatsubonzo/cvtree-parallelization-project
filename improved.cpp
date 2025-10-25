@@ -139,7 +139,7 @@ public:
 			if (stochastic > EPSILON)
 			{
 				t[i] = (vector[i] - stochastic) / stochastic;
-				count++; // reductionにより安全に集計される
+				count++;
 			}
 			else
 				t[i] = 0;
@@ -257,7 +257,7 @@ void CompareAllBacteria()
 	Bacteria** b = new Bacteria*[number_bacteria];
 	printf("Phase 1: Loading %d bacteria files...\n", number_bacteria);
 	double phase1_start_time = omp_get_wtime();
-	#pragma omp parallel for
+//	#pragma omp parallel for
     for(int i=0; i<number_bacteria; i++)
 	{
 		b[i] = new Bacteria(bacteria_name[i]);
