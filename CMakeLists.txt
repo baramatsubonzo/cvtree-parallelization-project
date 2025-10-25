@@ -11,3 +11,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(cvtree improved.cpp)
 target_link_libraries(cvtree PRIVATE OpenMP::OpenMP_CXX)
+
+target_compile_options(cvtree PRIVATE -O3 -march=native)
