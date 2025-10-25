@@ -257,7 +257,7 @@ void CompareAllBacteria()
 	Bacteria** b = new Bacteria*[number_bacteria];
 	printf("Phase 1: Loading %d bacteria files...\n", number_bacteria);
 	double phase1_start_time = omp_get_wtime();
-//	#pragma omp parallel for
+	// #pragma omp parallel for
     for(int i=0; i<number_bacteria; i++)
 	{
 		b[i] = new Bacteria(bacteria_name[i]);
@@ -283,6 +283,7 @@ void CompareAllBacteria()
 
 int main(int argc,char * argv[])
 {
+	omp_set_num_threads(8);
 	printf("threads: %d\n", omp_get_max_threads());
 	time_t t1 = time(NULL);
 
