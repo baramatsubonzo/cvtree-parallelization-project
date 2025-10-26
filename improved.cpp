@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <omp.h>
 
 int number_bacteria;
 char** bacteria_name;
@@ -93,7 +94,7 @@ public:
 		{
 			if (ch == '>')
 			{
-				while (fgetc(bacteria_file) != '\n'); // skip rest of line
+				while (fgetc(bacteria_file) != '\n');
 
 				char buffer[LEN-1];
 				fread(buffer, sizeof(char), LEN-1, bacteria_file);
@@ -121,29 +122,19 @@ public:
 		count = 0;
 		double* t = new double[M];
 
+		#pragma omp parallel for reduction(+:count)
 		for(long i=0; i<M; i++)
 		{
-			double p1 = second_div_total[i_div_aa_number];
-			double p2 = one_l_div_total[i_mod_aa_number];
-			double p3 = second_div_total[i_mod_M1];
-			double p4 = one_l_div_total[i_div_M1];
+			long idx_div_aa = i / AA_NUMBER;
+			int aa0 = i % AA_NUMBER;
+			long idx_div_M1 = i / M1;
+			long idx_mod_M1 = i % M1;
+
+			double p1 = second_div_total[idx_div_aa];
+			double p2 = one_l_div_total[aa0];
+			double p3 = second_div_total[idx_mod_M1];
+			double p4 = one_l_div_total[idx_div_M1];
 			double stochastic =  (p1 * p2 + p3 * p4) * total_div_2;
-
-			if (i_mod_aa_number == AA_NUMBER-1)
-			{
-				i_mod_aa_number = 0;
-				i_div_aa_number++;
-			}
-			else
-				i_mod_aa_number++;
-
-			if (i_mod_M1 == M1-1)
-			{
-				i_mod_M1 = 0;
-				i_div_M1++;
-			}
-			else
-				i_mod_M1++;
 
 			if (stochastic > EPSILON)
 			{
@@ -153,6 +144,7 @@ public:
 			else
 				t[i] = 0;
 		}
+
 
 		delete[] second_div_total;
 		delete[] vector;
@@ -263,18 +255,25 @@ double CompareBacteria(Bacteria* b1, Bacteria* b2)
 void CompareAllBacteria()
 {
 	Bacteria** b = new Bacteria*[number_bacteria];
+	printf("Phase 1: Loading %d bacteria files...\n", number_bacteria);
+	double phase1_start_time = omp_get_wtime();
+	// #pragma omp parallel for
     for(int i=0; i<number_bacteria; i++)
 	{
-		printf("load %d of %d\n", i+1, number_bacteria);
 		b[i] = new Bacteria(bacteria_name[i]);
 	}
+	double phase1_end_time = omp_get_wtime();
+	printf("Phase 1 finished in %.4f seconds.\n", phase1_end_time - phase1_start_time);
 
+	#pragma omp parallel for
     for(int i=0; i<number_bacteria-1; i++)
 		for(int j=i+1; j<number_bacteria; j++)
 		{
-			printf("%2d %2d -> ", i, j);
 			double correlation = CompareBacteria(b[i], b[j]);
-			printf("%.20lf\n", correlation);
+			#pragma omp critical
+			{
+				printf("%2d %2d -> %.20lf\n", i, j, correlation);
+			}
 		}
 	for (int i = 0; i < number_bacteria; i++) {
 		delete b[i];
@@ -284,6 +283,8 @@ void CompareAllBacteria()
 
 int main(int argc,char * argv[])
 {
+	omp_set_num_threads(16);
+	printf("threads: %d\n", omp_get_max_threads());
 	time_t t1 = time(NULL);
 
 	Init();

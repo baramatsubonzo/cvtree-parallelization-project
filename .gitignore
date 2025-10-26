@@ -4,3 +4,5 @@
 .idea/
 # CLion/CMake build directories
 cmake-build-*/
+
+output/
