@@ -94,7 +94,7 @@ public:
 		{
 			if (ch == '>')
 			{
-				while (fgetc(bacteria_file) != '\n'); // skip rest of line
+				while (fgetc(bacteria_file) != '\n');
 
 				char buffer[LEN-1];
 				fread(buffer, sizeof(char), LEN-1, bacteria_file);
