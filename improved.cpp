@@ -283,7 +283,7 @@ void CompareAllBacteria()
 
 int main(int argc,char * argv[])
 {
-	omp_set_num_threads(8);
+	omp_set_num_threads(16);
 	printf("threads: %d\n", omp_get_max_threads());
 	time_t t1 = time(NULL);
 
